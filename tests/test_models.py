@@ -7,10 +7,7 @@ from dj_downloader.models import SourceType, TrackInfo, normalize_track_string
 
 def test_normalize_track_string() -> None:
     # Test removing feat / ft tags
-    assert (
-        normalize_track_string("Drake feat. Wizkid - One Dance")
-        == "drake one dance"
-    )
+    assert normalize_track_string("Drake feat. Wizkid - One Dance") == "drake one dance"
     assert (
         normalize_track_string("Calvin Harris (ft. Ellie Goulding) - Miracle")
         == "calvin harris miracle"
@@ -19,15 +16,9 @@ def test_normalize_track_string() -> None:
         normalize_track_string("Tiësto - The Business (Official Music Video)")
         == "tiësto the business"
     )
-    assert (
-        normalize_track_string("Fisher - Losing It [Official Audio]")
-        == "fisher losing it"
-    )
+    assert normalize_track_string("Fisher - Losing It [Official Audio]") == "fisher losing it"
     # Punctuation stripping
-    assert (
-        normalize_track_string("Don't You Worry Child!")
-        == "dont you worry child"
-    )
+    assert normalize_track_string("Don't You Worry Child!") == "dont you worry child"
 
 
 def test_track_info_properties(sample_spotify_track: TrackInfo) -> None:

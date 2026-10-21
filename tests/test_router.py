@@ -5,28 +5,16 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
+from dj_downloader.router import classify_url, fetch_tracks
 
 from dj_downloader.models import SourceType, TrackInfo
-from dj_downloader.router import classify_url, fetch_tracks
 
 
 def test_classify_url() -> None:
-    assert (
-        classify_url("https://open.spotify.com/track/1zi7xxqqst8CR9oxEioOC4")
-        == "spotify"
-    )
-    assert (
-        classify_url("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M")
-        == "spotify"
-    )
-    assert (
-        classify_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
-        == "youtube"
-    )
-    assert (
-        classify_url("https://music.youtube.com/playlist?list=PLrEnWoR732")
-        == "youtube"
-    )
+    assert classify_url("https://open.spotify.com/track/1zi7xxqqst8CR9oxEioOC4") == "spotify"
+    assert classify_url("https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M") == "spotify"
+    assert classify_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ") == "youtube"
+    assert classify_url("https://music.youtube.com/playlist?list=PLrEnWoR732") == "youtube"
     assert classify_url("https://soundcloud.com/artist/track") == "unsupported"
 
 

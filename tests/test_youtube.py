@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from dj_downloader.models import SourceType
 from dj_downloader.youtube import (
     YOUTUBE_URL_PATTERN,
     YouTubeExtractor,
     parse_youtube_title_and_artist,
 )
+
+from dj_downloader.models import SourceType
 
 
 def test_youtube_url_patterns() -> None:
@@ -26,12 +27,16 @@ def test_youtube_url_patterns() -> None:
 
 def test_parse_youtube_title_and_artist() -> None:
     # Standard Artist - Title
-    artist, title = parse_youtube_title_and_artist("deadmau5 - Strobe (Radio Edit)", "deadmau5 - Topic")
+    artist, title = parse_youtube_title_and_artist(
+        "deadmau5 - Strobe (Radio Edit)", "deadmau5 - Topic"
+    )
     assert artist == "deadmau5"
     assert title == "Strobe (Radio Edit)"
 
     # With Official Video tag
-    artist, title = parse_youtube_title_and_artist("Fisher - Losing It (Official Video)", "FisherVEVO")
+    artist, title = parse_youtube_title_and_artist(
+        "Fisher - Losing It (Official Video)", "FisherVEVO"
+    )
     assert artist == "Fisher"
     assert title == "Losing It"
 

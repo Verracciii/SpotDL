@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from enum import Enum
 from pathlib import Path
-import re
 from typing import Any
 
 from pydantic import BaseModel, Field
@@ -80,13 +80,18 @@ class TrackInfo(BaseModel):
 
 
 def normalize_track_string(text: str) -> str:
-    """Normalize text by stripping punctuation, bracketed tags (feat, remix, official audio), and casing."""
+    """Normalize text by stripping punctuation, bracketed tags (feat, official audio), and casing."""
     text = text.lower()
-    # Remove common filler tags like (Official Video), [Audio], (feat. ...), [ft. ...]
-    text = re.sub(r"\((official\s+)?(video|audio|music\s+video|lyric\s+video|visualizer)\)", "", text)
-    text = re.sub(r"\[(official\s+)?(video|audio|music\s+video|lyric\s+video|visualizer)\]", "", text)
-    # Remove feat / ft variations
-    text = re.sub(r"(\(|\[)?(feat\.?|ft\.?)\s+[^\)\]]+(\)|\])?", "", text)
+    # Remove common filler tags like (Official Video), [Audio], (Official Music Video), etc.
+    text = re.sub(
+        r"[\(\[](official\s+)?(video|audio|music\s+video|lyric\s+video|visualizer)[\)\]]",
+        "",
+        text,
+    )
+    # Remove parenthesized / bracketed feat / ft variations: (feat. ...), [ft. ...]
+    text = re.sub(r"[\(\[](feat\.?|ft\.?)\s+[^\)\]]+[\)\]]", "", text)
+    # Remove unparenthesized feat / ft variations up to next delimiter (e.g., "Drake feat. Wizkid - Song")
+    text = re.sub(r"\s+(feat\.?|ft\.?)\s+[^-\(\]]+(?=\s*-\s*|$)", "", text)
     # Strip non-alphanumeric (keep spaces)
     text = re.sub(r"[^\w\s]", "", text)
     # Collapse whitespace
