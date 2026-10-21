@@ -5,9 +5,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from dj_downloader.router import classify_url, fetch_tracks
 
 from dj_downloader.models import SourceType, TrackInfo
+from dj_downloader.router import classify_url, fetch_tracks
 
 
 def test_classify_url() -> None:

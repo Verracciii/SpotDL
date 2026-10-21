@@ -4,13 +4,12 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+from dj_downloader.models import SourceType
 from dj_downloader.youtube import (
     YOUTUBE_URL_PATTERN,
     YouTubeExtractor,
     parse_youtube_title_and_artist,
 )
-
-from dj_downloader.models import SourceType
 
 
 def test_youtube_url_patterns() -> None:
