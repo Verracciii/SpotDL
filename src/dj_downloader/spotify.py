@@ -60,7 +60,13 @@ class SpotifyExtractor:
 
         sp = self._get_spotify_client()
         if sp:
-            return self._extract_via_api(sp, item_type, item_id, url)
+            try:
+                return self._extract_via_api(sp, item_type, item_id, url)
+            except Exception as e:
+                logger.warning(
+                    f"Spotify API error ({e}). Falling back to public embed fetcher..."
+                )
+                return self._extract_via_embed(item_type, item_id, url)
         else:
             return self._extract_via_embed(item_type, item_id, url)
 
