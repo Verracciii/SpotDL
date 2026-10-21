@@ -111,6 +111,11 @@ class AudioDownloader:
             "outtmpl": str(target_dir / f"{file_stem}.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["visionos", "mweb", "android"],
+                }
+            },
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",
