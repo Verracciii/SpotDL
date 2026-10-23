@@ -35,6 +35,7 @@ class TrackInfo(BaseModel):
     title: str
     artists: list[str] = Field(default_factory=list)
     album: str | None = None
+    playlist_name: str | None = None
     album_artist: str | None = None
     release_date: str | None = None
     duration_ms: int = 0

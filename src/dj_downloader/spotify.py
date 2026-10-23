@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 import requests
@@ -16,9 +17,40 @@ from dj_downloader.models import SourceType, TrackInfo
 
 logger = logging.getLogger(__name__)
 
+_LOOKUP_WORKERS = 8
+
 SPOTIFY_URL_PATTERN = re.compile(
     r"https?://open\.spotify\.com/(?P<type>track|album|playlist|artist)/(?P<id>[a-zA-Z0-9]+)"
 )
+
+# A minimal UA is deliberate: with a full browser UA, Spotify serves a JS app shell without the
+# <meta> tags (og:image, music:album) that the track-page lookup relies on.
+_HTTP_HEADERS = {"User-Agent": "Mozilla/5.0"}
+
+
+def _get_html(url: str) -> str:
+    """Fetch a public Spotify page."""
+    resp = requests.get(url, headers=_HTTP_HEADERS, timeout=10)
+    resp.raise_for_status()
+    return resp.text
+
+
+def _meta_content(html: str, key: str) -> str | None:
+    """Return the content of a <meta property|name="key"> tag, if present."""
+    match = re.search(rf'<meta (?:property|name)="{re.escape(key)}" content="([^"]*)"', html)
+    return match.group(1) if match else None
+
+
+def _best_image_url(entity: dict[str, Any]) -> str | None:
+    """Pick the largest cover image from an embed entity (coverArt or visualIdentity)."""
+    sources = entity.get("coverArt", {}).get("sources") or entity.get("visualIdentity", {}).get(
+        "image"
+    )
+    if not sources:
+        return None
+    best = max(sources, key=lambda s: s.get("maxWidth") or s.get("width") or 0)
+    url = best.get("url")
+    return str(url) if url else None
 
 
 class SpotifyExtractor:
@@ -28,6 +60,7 @@ class SpotifyExtractor:
         self.client_id = client_id or settings.spotipy_client_id
         self.client_secret = client_secret or settings.spotipy_client_secret
         self._sp: spotipy.Spotify | None = None
+        self._album_cache: dict[str, tuple[str | None, str | None]] = {}
 
     def _get_spotify_client(self) -> spotipy.Spotify | None:
         """Initialize authenticated Spotipy client if credentials exist."""
@@ -63,9 +96,7 @@ class SpotifyExtractor:
             try:
                 return self._extract_via_api(sp, item_type, item_id, url)
             except Exception as e:
-                logger.warning(
-                    f"Spotify API error ({e}). Falling back to public embed fetcher..."
-                )
+                logger.warning(f"Spotify API error ({e}). Falling back to public embed fetcher...")
                 return self._extract_via_embed(item_type, item_id, url)
         else:
             return self._extract_via_embed(item_type, item_id, url)
@@ -170,76 +201,122 @@ class SpotifyExtractor:
             disc_number=data.get("disc_number"),
         )
 
+    def _fetch_embed_entity(self, item_type: str, item_id: str) -> dict[str, Any]:
+        """Fetch and parse the public embed page entity for a Spotify item."""
+        html = _get_html(f"https://open.spotify.com/embed/{item_type}/{item_id}")
+        match = re.search(
+            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', html
+        )
+        if not match:
+            match = re.search(r'<script id="initial-state" type="text/plain">(.*?)</script>', html)
+        if not match:
+            return {}
+        state_data = json.loads(match.group(1))
+        entity: dict[str, Any] = (
+            state_data.get("props", {})
+            .get("pageProps", {})
+            .get("state", {})
+            .get("data", {})
+            .get("entity", {})
+        )
+        if not entity:
+            entity = state_data.get("data", {}).get("entity", {})
+        return entity
+
+    def _lookup_track_album(self, track_id: str) -> dict[str, str | None]:
+        """Best-effort per-track album name, album artist, cover and release date.
+
+        Playlist embeds carry no per-track album data, so read it from the track's public page.
+        """
+        info: dict[str, str | None] = {
+            "album": None,
+            "album_artist": None,
+            "cover_url": None,
+            "release_date": None,
+        }
+        try:
+            html = _get_html(f"https://open.spotify.com/track/{track_id}")
+            info["cover_url"] = _meta_content(html, "og:image")
+            info["release_date"] = _meta_content(html, "music:release_date")
+            album_url = _meta_content(html, "music:album") or ""
+            album_match = SPOTIFY_URL_PATTERN.search(album_url)
+            if album_match:
+                album_id = album_match.group("id")
+                if album_id not in self._album_cache:
+                    album_entity = self._fetch_embed_entity("album", album_id)
+                    self._album_cache[album_id] = (
+                        album_entity.get("title"),
+                        album_entity.get("subtitle"),
+                    )
+                info["album"], info["album_artist"] = self._album_cache[album_id]
+        except Exception as e:
+            logger.warning(f"Could not look up album for Spotify track {track_id}: {e}")
+        return info
+
     def _extract_via_embed(
         self, item_type: str, item_id: str, original_url: str
     ) -> list[TrackInfo]:
-        """Fallback extractor using Spotify embed page/token when no API credentials are provided."""
-        embed_url = f"https://open.spotify.com/embed/{item_type}/{item_id}"
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            )
-        }
-        resp = requests.get(embed_url, headers=headers, timeout=10)
-        resp.raise_for_status()
-
-        match = re.search(
-            r'<script id="__NEXT_DATA__" type="application/json">(.*?)</script>', resp.text
-        )
-        if not match:
-            match = re.search(
-                r'<script id="initial-state" type="text/plain">(.*?)</script>', resp.text
-            )
-
+        """Fallback extractor using public Spotify pages when the API is unavailable."""
         tracks: list[TrackInfo] = []
-        if match:
-            try:
-                state_data = json.loads(match.group(1))
-                entity = (
-                    state_data.get("props", {})
-                    .get("pageProps", {})
-                    .get("state", {})
-                    .get("data", {})
-                    .get("entity", {})
+        try:
+            entity = self._fetch_embed_entity(item_type, item_id)
+
+            if item_type == "track":
+                tracks.append(
+                    self._parse_embed_entity(entity, SourceType.SPOTIFY_TRACK, original_url)
                 )
-                if not entity:
-                    entity = state_data.get("data", {}).get("entity", {})
+            elif item_type in ("album", "playlist"):
+                is_playlist = item_type == "playlist"
+                container_title = entity.get("title")
+                container_cover = _best_image_url(entity)
+                source_type = (
+                    SourceType.SPOTIFY_PLAYLIST if is_playlist else SourceType.SPOTIFY_ALBUM
+                )
 
-                if item_type == "track":
+                track_items = entity.get("trackList", [])
+                infos: dict[str, dict[str, str | None]] = {}
+                if is_playlist:
+                    # Lookups are independent network calls; run them concurrently.
+                    # Two threads may fetch the same album once; the cache write is idempotent.
+                    ids = [i["uri"].split(":")[-1] for i in track_items if i.get("uri")]
+                    with ThreadPoolExecutor(max_workers=_LOOKUP_WORKERS) as pool:
+                        infos = dict(zip(ids, pool.map(self._lookup_track_album, ids), strict=True))
+
+                for item in track_items:
+                    artists = [item.get("subtitle", "Unknown Artist")]
+                    if "," in artists[0]:
+                        artists = [a.strip() for a in artists[0].split(",")]
+                    track_id = item.get("uri", "").split(":")[-1] if item.get("uri") else None
+
+                    album: str | None = container_title
+                    album_artist: str | None = entity.get("subtitle")
+                    cover: str | None = container_cover
+                    release_date: str | None = None
+                    if is_playlist:
+                        # Playlist title/cover must not leak into per-track album tags.
+                        info = infos.get(track_id or "", {})
+                        album = info.get("album")
+                        album_artist = info.get("album_artist")
+                        cover = info.get("cover_url")
+                        release_date = info.get("release_date")
+
                     tracks.append(
-                        self._parse_embed_entity(entity, SourceType.SPOTIFY_TRACK, original_url)
-                    )
-                elif item_type in ("album", "playlist"):
-                    track_list = entity.get("trackList", [])
-                    album_title = entity.get("title")
-                    cover = entity.get("coverArt", {}).get("sources", [{}])[-1].get("url")
-
-                    for item in track_list:
-                        artists = [item.get("subtitle", "Unknown Artist")]
-                        if "," in artists[0]:
-                            artists = [a.strip() for a in artists[0].split(",")]
-
-                        tracks.append(
-                            TrackInfo(
-                                title=item.get("title", "Unknown Title"),
-                                artists=artists,
-                                album=album_title,
-                                duration_ms=int(item.get("duration", 0)),
-                                spotify_id=(
-                                    item.get("uri", "").split(":")[-1] if item.get("uri") else None
-                                ),
-                                source_url=original_url,
-                                source_type=(
-                                    SourceType.SPOTIFY_PLAYLIST
-                                    if item_type == "playlist"
-                                    else SourceType.SPOTIFY_ALBUM
-                                ),
-                                cover_url=cover,
-                            )
+                        TrackInfo(
+                            title=item.get("title", "Unknown Title"),
+                            artists=artists,
+                            album=album,
+                            playlist_name=container_title if is_playlist else None,
+                            album_artist=album_artist,
+                            release_date=release_date,
+                            duration_ms=int(item.get("duration", 0)),
+                            spotify_id=track_id,
+                            source_url=original_url,
+                            source_type=source_type,
+                            cover_url=cover,
                         )
-            except Exception as e:
-                logger.error(f"Error parsing Spotify embed json: {e}")
+                    )
+        except Exception as e:
+            logger.error(f"Error parsing Spotify embed json: {e}")
 
         if not tracks:
             raise RuntimeError(
@@ -252,20 +329,24 @@ class SpotifyExtractor:
     def _parse_embed_entity(
         self, entity: dict[str, Any], source_type: SourceType, source_url: str
     ) -> TrackInfo:
-        """Parse embed entity dictionary."""
+        """Parse a single-track embed entity and enrich it with album data."""
         title = entity.get("title", "Unknown Title")
-        subtitle = entity.get("subtitle", "Unknown Artist")
-        artists = [a.strip() for a in subtitle.split(",")] if subtitle else ["Unknown Artist"]
-        cover_sources = entity.get("coverArt", {}).get("sources", [])
-        cover_url = cover_sources[-1].get("url") if cover_sources else None
+        artists = [a["name"] for a in entity.get("artists", []) if a.get("name")]
+        if not artists:
+            subtitle = entity.get("subtitle")
+            artists = [a.strip() for a in subtitle.split(",")] if subtitle else ["Unknown Artist"]
+        track_id = entity.get("id")
+        info = self._lookup_track_album(track_id) if track_id else {}
 
         return TrackInfo(
             title=title,
             artists=artists,
-            album=entity.get("title") if source_type == SourceType.SPOTIFY_ALBUM else None,
+            album=info.get("album"),
+            album_artist=info.get("album_artist"),
+            release_date=info.get("release_date"),
             duration_ms=int(entity.get("duration", 0)),
-            spotify_id=entity.get("id"),
+            spotify_id=track_id,
             source_url=source_url,
             source_type=source_type,
-            cover_url=cover_url,
+            cover_url=info.get("cover_url") or _best_image_url(entity),
         )

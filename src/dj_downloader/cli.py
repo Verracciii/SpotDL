@@ -132,7 +132,7 @@ def download_command(
     destination_dir = target_output_root
     if len(tracks) > 1 and not no_organize:
         # Determine playlist or album name from first track
-        subfolder_name = tracks[0].album or "Playlist_Downloads"
+        subfolder_name = tracks[0].playlist_name or tracks[0].album or "Playlist_Downloads"
         # Sanitize folder name
         safe_subfolder = "".join(
             c for c in subfolder_name if c.isalnum() or c in (" ", "-", "_")
