@@ -10,7 +10,7 @@ from typing import Any
 from yt_dlp import YoutubeDL
 
 from dj_downloader.config import settings
-from dj_downloader.downloader import get_cookie_opts
+from dj_downloader.downloader import get_cookie_opts, get_js_runtime_opts
 from dj_downloader.models import SourceType, TrackInfo
 
 logger = logging.getLogger(__name__)
@@ -62,11 +62,13 @@ class YouTubeExtractor:
             cookies_browser if cookies_browser is not None else settings.cookies_browser,
             cookie_file if cookie_file is not None else settings.cookie_file,
         )
+        js_opts = get_js_runtime_opts()
         default_opts: dict[str, Any] = {
             "extract_flat": "in_playlist",
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
+            **js_opts,
             **cookie_opts,
         }
         if ydl_opts:

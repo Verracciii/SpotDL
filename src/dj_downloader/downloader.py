@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,22 @@ def get_cookie_opts(
     return {}
 
 
+def get_js_runtime_opts() -> dict[str, Any]:
+    """Configure JS runtime options to solve YouTube signature/n-challenge scripts."""
+    runtimes: dict[str, dict[str, Any]] = {}
+    for rt in ("node", "deno", "bun", "quickjs"):
+        path = shutil.which(rt)
+        if path:
+            runtimes[rt] = {"path": path}
+
+    opts: dict[str, Any] = {
+        "remote_components": ["ejs:github"],
+    }
+    if runtimes:
+        opts["js_runtimes"] = runtimes
+    return opts
+
+
 class AudioDownloader:
     """Finds best audio match and extracts high-quality audio streams."""
 
@@ -80,11 +97,13 @@ class AudioDownloader:
         search_queries = construct_search_queries(track)
 
         cookie_opts = get_cookie_opts(self.cookies_browser, self.cookie_file)
+        js_opts = get_js_runtime_opts()
         ydl_opts: dict[str, Any] = {
             "extract_flat": True,
             "quiet": True,
             "no_warnings": True,
             "default_search": "ytsearch5",
+            **js_opts,
             **cookie_opts,
         }
 
@@ -135,11 +154,13 @@ class AudioDownloader:
         expected_output = target_dir / f"{file_stem}.{self.audio_format.value}"
 
         cookie_opts = get_cookie_opts(self.cookies_browser, self.cookie_file)
+        js_opts = get_js_runtime_opts()
         ydl_opts: dict[str, Any] = {
             "format": "bestaudio/best",
             "outtmpl": str(target_dir / f"{file_stem}.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
+            **js_opts,
             **cookie_opts,
             "postprocessors": [
                 {

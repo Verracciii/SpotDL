@@ -9,6 +9,7 @@ from dj_downloader.downloader import (
     AudioDownloader,
     construct_search_queries,
     get_cookie_opts,
+    get_js_runtime_opts,
 )
 from dj_downloader.models import AudioFormat, SourceType, TrackInfo
 
@@ -80,6 +81,12 @@ def test_get_cookie_opts(tmp_path: Path) -> None:
     # 4. Cookie file non-existent
     non_existent = tmp_path / "does_not_exist.txt"
     assert get_cookie_opts(cookie_file=non_existent) == {}
+
+
+def test_get_js_runtime_opts() -> None:
+    opts = get_js_runtime_opts()
+    assert "remote_components" in opts
+    assert "ejs:github" in opts["remote_components"]
 
 
 @patch("dj_downloader.downloader.YoutubeDL")
