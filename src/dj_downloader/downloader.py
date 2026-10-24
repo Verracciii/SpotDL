@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any
@@ -51,11 +52,39 @@ def get_cookie_opts(
     return {}
 
 
+def find_js_runtime_binary(runtime_name: str) -> str | None:
+    """Find path to a JS runtime executable, searching PATH and common macOS/Linux paths."""
+    found = shutil.which(runtime_name)
+    if found:
+        return found
+
+    search_dirs = [
+        Path("/opt/homebrew/bin"),
+        Path("/usr/local/bin"),
+        Path.home() / ".bun" / "bin",
+        Path.home() / ".deno" / "bin",
+        Path.home() / ".local" / "bin",
+    ]
+    for d in search_dirs:
+        candidate = d / runtime_name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+
+    if runtime_name == "node":
+        nvm_dir = Path.home() / ".nvm" / "versions" / "node"
+        if nvm_dir.is_dir():
+            for node_bin in sorted(nvm_dir.glob("*/bin/node"), reverse=True):
+                if node_bin.is_file() and os.access(node_bin, os.X_OK):
+                    return str(node_bin)
+
+    return None
+
+
 def get_js_runtime_opts() -> dict[str, Any]:
     """Configure JS runtime options to solve YouTube signature/n-challenge scripts."""
     runtimes: dict[str, dict[str, Any]] = {}
     for rt in ("node", "deno", "bun", "quickjs"):
-        path = shutil.which(rt)
+        path = find_js_runtime_binary(rt)
         if path:
             runtimes[rt] = {"path": path}
 
