@@ -4,10 +4,13 @@ from __future__ import annotations
 
 import logging
 import re
+from pathlib import Path
 from typing import Any
 
 from yt_dlp import YoutubeDL
 
+from dj_downloader.config import settings
+from dj_downloader.downloader import get_cookie_opts
 from dj_downloader.models import SourceType, TrackInfo
 
 logger = logging.getLogger(__name__)
@@ -49,13 +52,31 @@ def parse_youtube_title_and_artist(raw_title: str, uploader: str = "") -> tuple[
 class YouTubeExtractor:
     """Extracts track metadata from YouTube and YouTube Music URLs using yt-dlp."""
 
-    def __init__(self, ydl_opts: dict[str, Any] | None = None) -> None:
-        self.ydl_opts = ydl_opts or {
+    def __init__(
+        self,
+        ydl_opts: dict[str, Any] | None = None,
+        cookies_browser: str | None = None,
+        cookie_file: Path | None = None,
+    ) -> None:
+        cookie_opts = get_cookie_opts(
+            cookies_browser if cookies_browser is not None else settings.cookies_browser,
+            cookie_file if cookie_file is not None else settings.cookie_file,
+        )
+        default_opts: dict[str, Any] = {
             "extract_flat": "in_playlist",
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["visionos", "mweb", "android"],
+                }
+            },
+            **cookie_opts,
         }
+        if ydl_opts:
+            default_opts.update(ydl_opts)
+        self.ydl_opts = default_opts
 
     def extract(self, url: str) -> list[TrackInfo]:
         """Extract track info from a YouTube video or playlist URL."""

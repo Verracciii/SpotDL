@@ -45,6 +45,10 @@ class Settings(BaseSettings):
     max_delay_seconds: float = Field(default=5.0, alias="DJ_DL_MAX_DELAY_SECONDS")
     max_retries: int = Field(default=3, alias="DJ_DL_MAX_RETRIES")
 
+    # Cookies & Authentication
+    cookies_browser: str | None = Field(default=None, alias="DJ_DL_COOKIES_BROWSER")
+    cookie_file: Path | None = Field(default=None, alias="DJ_DL_COOKIE_FILE")
+
     # Duplicate checking
     recursive_scan: bool = Field(default=True, alias="DJ_DL_RECURSIVE_SCAN")
     supported_audio_extensions: tuple[str, ...] = (
@@ -59,21 +63,23 @@ class Settings(BaseSettings):
     )
 
 
-def get_stored_json_config(config_path: Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
+def get_stored_json_config(config_path: Path | None = None) -> dict[str, Any]:
     """Read stored user config from JSON file if exists."""
-    if config_path.is_file():
+    target_path = config_path if config_path is not None else DEFAULT_CONFIG_PATH
+    if target_path.is_file():
         try:
-            data = json.loads(config_path.read_text(encoding="utf-8"))
+            data = json.loads(target_path.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 return data
         except Exception as e:
-            logger.warning(f"Failed to read user config at {config_path}: {e}")
+            logger.warning(f"Failed to read user config at {target_path}: {e}")
     return {}
 
 
-def load_user_config(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
+def load_user_config(config_path: Path | None = None) -> Settings:
     """Load settings merging defaults, JSON config file, and env variables."""
-    stored_data = get_stored_json_config(config_path)
+    target_path = config_path if config_path is not None else DEFAULT_CONFIG_PATH
+    stored_data = get_stored_json_config(target_path)
     base_settings = Settings()
 
     if "dj_library_dir" in stored_data and stored_data["dj_library_dir"]:
@@ -84,18 +90,21 @@ def load_user_config(config_path: Path = DEFAULT_CONFIG_PATH) -> Settings:
         base_settings.audio_format = AudioFormat(stored_data["audio_format"])
     if "audio_bitrate" in stored_data and stored_data["audio_bitrate"]:
         base_settings.audio_bitrate = str(stored_data["audio_bitrate"])
+    if "cookies_browser" in stored_data and stored_data["cookies_browser"]:
+        base_settings.cookies_browser = str(stored_data["cookies_browser"])
+    if "cookie_file" in stored_data and stored_data["cookie_file"]:
+        base_settings.cookie_file = Path(stored_data["cookie_file"]).expanduser().resolve()
 
     return base_settings
 
 
-def save_user_config(
-    key: str, value: Any, config_path: Path = DEFAULT_CONFIG_PATH
-) -> dict[str, Any]:
+def save_user_config(key: str, value: Any, config_path: Path | None = None) -> dict[str, Any]:
     """Save or update a setting permanently in the JSON config file."""
-    config_path.parent.mkdir(parents=True, exist_ok=True)
-    current_data = get_stored_json_config(config_path)
+    target_path = config_path if config_path is not None else DEFAULT_CONFIG_PATH
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    current_data = get_stored_json_config(target_path)
     current_data[key] = str(value) if isinstance(value, Path) else value
-    config_path.write_text(json.dumps(current_data, indent=2), encoding="utf-8")
+    target_path.write_text(json.dumps(current_data, indent=2), encoding="utf-8")
     return current_data
 
 

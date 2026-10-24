@@ -100,6 +100,20 @@ def download_command(
         bool,
         typer.Option("--no-organize", help="Do not create a subfolder for playlists/albums"),
     ] = False,
+    cookies_browser: Annotated[
+        str | None,
+        typer.Option(
+            "--cookies-browser",
+            help="Extract cookies from browser (e.g. chrome, firefox, safari, brave, edge, auto)",
+        ),
+    ] = None,
+    cookie_file: Annotated[
+        Path | None,
+        typer.Option(
+            "--cookie-file",
+            help="Path to cookies.txt file for authentication and age-restricted downloads",
+        ),
+    ] = None,
 ) -> None:
     """Download tracks from a Spotify or YouTube link, checking for duplicates."""
     active_library_dir = ensure_library_dir(library_dir)
@@ -117,7 +131,11 @@ def download_command(
     # Step 2: Fetch track metadata
     with console.status("[bold cyan]Fetching metadata from link...[/bold cyan]"):
         try:
-            tracks: list[TrackInfo] = fetch_tracks(url)
+            tracks: list[TrackInfo] = fetch_tracks(
+                url,
+                cookies_browser=cookies_browser or cfg.cookies_browser,
+                cookie_file=cookie_file or cfg.cookie_file,
+            )
         except Exception as e:
             console.print(f"[bold red]Failed to fetch tracks:[/bold red] {e}")
             raise typer.Exit(code=1) from e
@@ -143,7 +161,12 @@ def download_command(
             f"[blue]Organizing downloads into folder:[/blue] [bold]{destination_dir}[/bold]\n"
         )
 
-    downloader = AudioDownloader(output_dir=destination_dir, audio_format=audio_format)
+    downloader = AudioDownloader(
+        output_dir=destination_dir,
+        audio_format=audio_format,
+        cookies_browser=cookies_browser or cfg.cookies_browser,
+        cookie_file=cookie_file or cfg.cookie_file,
+    )
     tagger = AudioTagger()
     limiter = RateLimiter()
 
@@ -281,11 +304,55 @@ def config_show() -> None:
     table.add_row("Default Output Directory", str(cfg.output_dir))
     table.add_row("Default Audio Format", cfg.audio_format.value)
     table.add_row("Audio Bitrate", cfg.audio_bitrate)
+    table.add_row("Cookies Browser", cfg.cookies_browser or "Not Set")
+    table.add_row("Cookie File", str(cfg.cookie_file or "Not Set"))
     table.add_row(
         "Spotify API Credentials",
         "Configured" if cfg.spotipy_client_id else "Not Set (Using Embed Fallback)",
     )
     console.print(table)
+
+
+@config_app.command(name="set-cookies-browser")
+def config_set_cookies_browser(
+    browser: Annotated[
+        str,
+        typer.Argument(
+            help="Browser name to extract cookies from (e.g. chrome, firefox, safari, edge, brave, auto, or 'none' to clear)"
+        ),
+    ],
+) -> None:
+    """Permanently update the browser used for extracting cookies."""
+    val: str | None = None if browser.lower() in ("none", "clear", "unset") else browser
+    save_user_config("cookies_browser", val)
+    if val:
+        console.print(f"[green]Cookies browser updated permanently to:[/green] [bold]{val}[/bold]")
+    else:
+        console.print("[green]Cookies browser setting cleared.[/green]")
+
+
+@config_app.command(name="set-cookie-file")
+def config_set_cookie_file(
+    path: Annotated[
+        Path,
+        typer.Argument(help="Path to cookies.txt file (or 'none' to clear)"),
+    ],
+) -> None:
+    """Permanently update the path to a cookies.txt file."""
+    if str(path).lower() in ("none", "clear", "unset"):
+        save_user_config("cookie_file", None)
+        console.print("[green]Cookie file setting cleared.[/green]")
+        return
+
+    resolved = path.expanduser().resolve()
+    if not resolved.exists():
+        console.print(
+            f"[bold yellow]Warning:[/bold yellow] Cookie file at {resolved} does not currently exist."
+        )
+    save_user_config("cookie_file", resolved)
+    console.print(
+        f"[green]Cookie file path updated permanently to:[/green] [bold]{resolved}[/bold]"
+    )
 
 
 @config_app.command(name="set-library")

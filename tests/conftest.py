@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
+import dj_downloader.config as cfg_module
 from dj_downloader.models import SourceType, TrackInfo
+
+
+@pytest.fixture(autouse=True)
+def isolate_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Ensure every test runs with an isolated config file and reset settings."""
+    fake_config = tmp_path / "test_config.json"
+    monkeypatch.setattr("dj_downloader.config.DEFAULT_CONFIG_PATH", fake_config)
+    monkeypatch.setattr("dj_downloader.cli.DEFAULT_CONFIG_PATH", fake_config)
+    monkeypatch.setattr(cfg_module, "settings", cfg_module.load_user_config(fake_config))
 
 
 @pytest.fixture

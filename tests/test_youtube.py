@@ -50,6 +50,16 @@ def test_parse_youtube_title_and_artist() -> None:
     assert title == "Animals"
 
 
+def test_youtube_extractor_cookies_configuration() -> None:
+    extractor = YouTubeExtractor(cookies_browser="brave")
+    assert extractor.ydl_opts.get("cookiesfrombrowser") == ("brave",)
+    assert extractor.ydl_opts.get("extractor_args", {}).get("youtube", {}).get("player_client") == [
+        "visionos",
+        "mweb",
+        "android",
+    ]
+
+
 @patch("dj_downloader.youtube.YoutubeDL")
 def test_youtube_extract_single_video(mock_ydl_class: MagicMock) -> None:
     mock_ydl = MagicMock()

@@ -34,6 +34,30 @@ def test_cli_config_set_library(tmp_path: Path) -> None:
         assert "Master DJ Library directory updated" in result.output
 
 
+def test_cli_config_set_cookies_browser(tmp_path: Path) -> None:
+    config_file = tmp_path / "test_cfg.json"
+    with (
+        patch("dj_downloader.cli.DEFAULT_CONFIG_PATH", config_file),
+        patch("dj_downloader.config.DEFAULT_CONFIG_PATH", config_file),
+    ):
+        result = runner.invoke(app, ["config", "set-cookies-browser", "firefox"])
+        assert result.exit_code == 0
+        assert "Cookies browser updated permanently to: firefox" in result.output
+
+
+def test_cli_config_set_cookie_file(tmp_path: Path) -> None:
+    cookie_path = tmp_path / "my_cookies.txt"
+    cookie_path.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+    config_file = tmp_path / "test_cfg.json"
+    with (
+        patch("dj_downloader.cli.DEFAULT_CONFIG_PATH", config_file),
+        patch("dj_downloader.config.DEFAULT_CONFIG_PATH", config_file),
+    ):
+        result = runner.invoke(app, ["config", "set-cookie-file", str(cookie_path)])
+        assert result.exit_code == 0
+        assert "Cookie file path updated permanently to:" in result.output
+
+
 @patch("dj_downloader.cli.fetch_tracks")
 @patch("dj_downloader.cli.AudioDownloader")
 @patch("dj_downloader.cli.AudioTagger")
@@ -69,4 +93,8 @@ def test_cli_download_command_flow(
 
     assert result.exit_code == 0
     assert "Drake - One Dance" in result.output
-    mock_fetch_tracks.assert_called_once_with("https://open.spotify.com/track/123")
+    mock_fetch_tracks.assert_called_once_with(
+        "https://open.spotify.com/track/123",
+        cookies_browser=None,
+        cookie_file=None,
+    )

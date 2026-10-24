@@ -5,7 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from dj_downloader.downloader import AudioDownloader, construct_search_queries
+from dj_downloader.downloader import (
+    AudioDownloader,
+    construct_search_queries,
+    get_cookie_opts,
+)
 from dj_downloader.models import AudioFormat, SourceType, TrackInfo
 
 
@@ -58,3 +62,45 @@ def test_audio_downloader_duration_check(mock_ydl_class: MagicMock, tmp_path: Pa
     best_match = downloader.find_best_match(track)
     # Should reject the 10 minute track as duration difference > max tolerance (15s)
     assert best_match is None
+
+
+def test_get_cookie_opts(tmp_path: Path) -> None:
+    # 1. No cookies
+    assert get_cookie_opts(None, None) == {}
+
+    # 2. Browser cookies
+    assert get_cookie_opts(cookies_browser="firefox") == {"cookiesfrombrowser": ("firefox",)}
+    assert get_cookie_opts(cookies_browser="auto") == {"cookiesfrombrowser": ("chrome",)}
+
+    # 3. Cookie file existing
+    dummy_cookie = tmp_path / "cookies.txt"
+    dummy_cookie.write_text("# Netscape HTTP Cookie File", encoding="utf-8")
+    assert get_cookie_opts(cookie_file=dummy_cookie) == {"cookiefile": str(dummy_cookie.resolve())}
+
+    # 4. Cookie file non-existent
+    non_existent = tmp_path / "does_not_exist.txt"
+    assert get_cookie_opts(cookie_file=non_existent) == {}
+
+
+@patch("dj_downloader.downloader.YoutubeDL")
+def test_audio_downloader_passes_cookies(mock_ydl_class: MagicMock, tmp_path: Path) -> None:
+    mock_ydl = MagicMock()
+    mock_ydl.extract_info.return_value = {"entries": []}
+    mock_ydl_class.return_value.__enter__.return_value = mock_ydl
+
+    downloader = AudioDownloader(
+        output_dir=tmp_path,
+        cookies_browser="safari",
+    )
+    track = TrackInfo(
+        title="Test Track",
+        artists=["Test Artist"],
+        source_url="https://open.spotify.com/track/xyz",
+        source_type=SourceType.SPOTIFY_TRACK,
+    )
+    downloader.find_best_match(track)
+
+    # Verify YoutubeDL was instantiated with cookie options
+    mock_ydl_class.assert_called()
+    called_opts = mock_ydl_class.call_args[0][0]
+    assert called_opts.get("cookiesfrombrowser") == ("safari",)

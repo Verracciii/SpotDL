@@ -30,6 +30,26 @@ def construct_search_queries(track: TrackInfo) -> list[str]:
     return queries
 
 
+def get_cookie_opts(
+    cookies_browser: str | None = None,
+    cookie_file: Path | None = None,
+) -> dict[str, Any]:
+    """Generate yt-dlp cookie options from browser or cookie file settings."""
+    if cookie_file:
+        resolved_path = Path(cookie_file).expanduser().resolve()
+        if resolved_path.exists():
+            return {"cookiefile": str(resolved_path)}
+        logger.warning(f"Configured cookie file does not exist: {cookie_file}")
+
+    if cookies_browser:
+        browser_clean = cookies_browser.strip().lower()
+        if browser_clean == "auto":
+            return {"cookiesfrombrowser": ("chrome",)}
+        return {"cookiesfrombrowser": (browser_clean,)}
+
+    return {}
+
+
 class AudioDownloader:
     """Finds best audio match and extracts high-quality audio streams."""
 
@@ -39,11 +59,17 @@ class AudioDownloader:
         audio_format: AudioFormat = AudioFormat.MP3,
         audio_bitrate: str = "320k",
         max_duration_diff_sec: int = 15,
+        cookies_browser: str | None = None,
+        cookie_file: Path | None = None,
     ) -> None:
         self.output_dir = output_dir or settings.output_dir
         self.audio_format = audio_format
         self.audio_bitrate = audio_bitrate
         self.max_duration_diff_sec = max_duration_diff_sec
+        self.cookies_browser = (
+            cookies_browser if cookies_browser is not None else settings.cookies_browser
+        )
+        self.cookie_file = cookie_file if cookie_file is not None else settings.cookie_file
 
     def find_best_match(self, track: TrackInfo) -> str | None:
         """Find the matching YouTube stream URL that passes duration verification."""
@@ -53,11 +79,18 @@ class AudioDownloader:
         target_duration_sec = track.duration_ms / 1000.0 if track.duration_ms > 0 else None
         search_queries = construct_search_queries(track)
 
-        ydl_opts = {
+        cookie_opts = get_cookie_opts(self.cookies_browser, self.cookie_file)
+        ydl_opts: dict[str, Any] = {
             "extract_flat": True,
             "quiet": True,
             "no_warnings": True,
             "default_search": "ytsearch5",
+            "extractor_args": {
+                "youtube": {
+                    "player_client": ["visionos", "mweb", "android"],
+                }
+            },
+            **cookie_opts,
         }
 
         with YoutubeDL(ydl_opts) as ydl:
@@ -106,6 +139,7 @@ class AudioDownloader:
         file_stem = track.safe_filename_base
         expected_output = target_dir / f"{file_stem}.{self.audio_format.value}"
 
+        cookie_opts = get_cookie_opts(self.cookies_browser, self.cookie_file)
         ydl_opts: dict[str, Any] = {
             "format": "bestaudio/best",
             "outtmpl": str(target_dir / f"{file_stem}.%(ext)s"),
@@ -116,6 +150,7 @@ class AudioDownloader:
                     "player_client": ["visionos", "mweb", "android"],
                 }
             },
+            **cookie_opts,
             "postprocessors": [
                 {
                     "key": "FFmpegExtractAudio",

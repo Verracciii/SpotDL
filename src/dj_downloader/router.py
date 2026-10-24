@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from dj_downloader.models import TrackInfo
 from dj_downloader.spotify import SPOTIFY_URL_PATTERN, SpotifyExtractor
@@ -19,7 +20,11 @@ def classify_url(url: str) -> str:
     return "unsupported"
 
 
-def fetch_tracks(url: str) -> list[TrackInfo]:
+def fetch_tracks(
+    url: str,
+    cookies_browser: str | None = None,
+    cookie_file: Path | None = None,
+) -> list[TrackInfo]:
     """Unified entry point to extract TrackInfo items from any supported URL."""
     service = classify_url(url)
 
@@ -27,7 +32,10 @@ def fetch_tracks(url: str) -> list[TrackInfo]:
         extractor = SpotifyExtractor()
         return extractor.extract(url)
     elif service == "youtube":
-        yt_extractor = YouTubeExtractor()
+        yt_extractor = YouTubeExtractor(
+            cookies_browser=cookies_browser,
+            cookie_file=cookie_file,
+        )
         return yt_extractor.extract(url)
     else:
         raise ValueError(
