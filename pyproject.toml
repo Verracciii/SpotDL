@@ -13,7 +13,8 @@ authors = [
     { name = "DJ Tools" }
 ]
 dependencies = [
-    "yt-dlp>=2024.8.6",
+    "yt-dlp>=2025.08.0",
+    "yt-dlp-ejs>=0.8.0",
     "spotipy>=2.24.0",
     "mutagen>=1.47.0",
     "rich>=13.7.1",
