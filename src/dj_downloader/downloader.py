@@ -64,6 +64,13 @@ def get_js_runtime_opts() -> dict[str, Any]:
     }
     if runtimes:
         opts["js_runtimes"] = runtimes
+    else:
+        # Fallback to android client when no JS engine (Node/Deno) is installed on the machine
+        opts["extractor_args"] = {
+            "youtube": {
+                "player_client": ["android", "web"],
+            }
+        }
     return opts
 
 
