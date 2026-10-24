@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import logging
+import shutil
 from pathlib import Path
 from typing import Annotated
 
 import typer
+import yt_dlp
 from rich.console import Console
 from rich.panel import Panel
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn, TimeElapsedColumn
 from rich.prompt import Prompt
 from rich.table import Table
+from yt_dlp import YoutubeDL
 
 from dj_downloader.config import (
     DEFAULT_CONFIG_PATH,
@@ -19,7 +22,12 @@ from dj_downloader.config import (
     save_user_config,
 )
 from dj_downloader.dedup import LibraryIndexer
-from dj_downloader.downloader import AudioDownloader
+from dj_downloader.downloader import (
+    AudioDownloader,
+    find_js_runtime_binary,
+    get_cookie_opts,
+    get_js_runtime_opts,
+)
 from dj_downloader.limiter import RateLimiter
 from dj_downloader.models import (
     AudioFormat,
@@ -411,6 +419,84 @@ def scan_library(
 
     console.print(table)
     console.print(f"[bold green]Total indexed audio tracks: {len(files)}[/bold green]\n")
+
+
+@app.command(name="doctor")
+def doctor_command() -> None:
+    """Run system diagnostics for yt-dlp, Node.js, FFmpeg, and cookies."""
+    table = Table(title="DJ SpotDL System Diagnostics", border_style="cyan")
+    table.add_column("Component", style="bold cyan")
+    table.add_column("Status / Path", style="bold")
+    table.add_column("Notes", style="dim")
+
+    # 1. yt-dlp version
+    yt_ver = getattr(yt_dlp.version, "__version__", "Unknown")
+    table.add_row(
+        "yt-dlp version", yt_ver, "Must be >= 2025.08 for latest YouTube challenge solvers"
+    )
+
+    # 2. FFmpeg & FFprobe
+    ffmpeg_path = shutil.which("ffmpeg")
+    table.add_row(
+        "FFmpeg (Audio Conversion)",
+        f"[green]{ffmpeg_path}[/green]"
+        if ffmpeg_path
+        else "[red]NOT FOUND (brew install ffmpeg)[/red]",
+        "Required for converting audio to MP3/FLAC",
+    )
+
+    ffprobe_path = shutil.which("ffprobe")
+    table.add_row(
+        "FFprobe",
+        f"[green]{ffprobe_path}[/green]"
+        if ffprobe_path
+        else "[red]NOT FOUND (brew install ffmpeg)[/red]",
+        "Required for audio stream probing",
+    )
+
+    # 3. Node.js / JS runtime
+    node_path = find_js_runtime_binary("node")
+    table.add_row(
+        "Node.js / JS Engine",
+        f"[green]{node_path}[/green]"
+        if node_path
+        else "[yellow]NOT FOUND (brew install node)[/yellow]",
+        "Solves YouTube signature challenges",
+    )
+
+    # 4. Cookies
+    cfg = load_user_config()
+    table.add_row(
+        "Cookies Browser", cfg.cookies_browser or "None", "Extracts session cookies from browser"
+    )
+    table.add_row("Cookie File", str(cfg.cookie_file or "None"), "Path to cookies.txt")
+
+    console.print("\n")
+    console.print(table)
+
+    # 5. Live YouTube Format Probe
+    console.print("\n[cyan]Testing YouTube stream format negotiation...[/cyan]")
+    cookie_opts = get_cookie_opts(cfg.cookies_browser, cfg.cookie_file)
+    js_opts = get_js_runtime_opts()
+
+    ydl_opts = {
+        "format": "bestaudio/best",
+        "quiet": True,
+        "no_warnings": False,
+        **js_opts,
+        **cookie_opts,
+    }
+
+    test_url = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            res = ydl.extract_info(test_url, download=False)
+            formats = res.get("formats", []) if res else []
+            console.print(
+                f"[bold green]✓ Format negotiation SUCCESS![/bold green] ({len(formats)} streams available)\n"
+            )
+    except Exception as e:
+        console.print(f"[bold red]✗ Format negotiation FAILED:[/bold red] {e}\n")
 
 
 if __name__ == "__main__":

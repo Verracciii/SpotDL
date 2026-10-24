@@ -19,6 +19,18 @@ def test_cli_config_show() -> None:
     assert "DJ SpotDL Configuration" in result.output
 
 
+@patch("dj_downloader.cli.YoutubeDL")
+def test_cli_doctor(mock_ydl_class: MagicMock) -> None:
+    mock_ydl = MagicMock()
+    mock_ydl.extract_info.return_value = {"formats": [{"format_id": "140"}]}
+    mock_ydl_class.return_value.__enter__.return_value = mock_ydl
+
+    result = runner.invoke(app, ["doctor"])
+    assert result.exit_code == 0
+    assert "DJ SpotDL System Diagnostics" in result.output
+    assert "Format negotiation SUCCESS" in result.output
+
+
 def test_cli_config_set_library(tmp_path: Path) -> None:
     lib_path = tmp_path / "MyDJLibrary"
     lib_path.mkdir()
