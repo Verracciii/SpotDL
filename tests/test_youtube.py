@@ -53,11 +53,6 @@ def test_parse_youtube_title_and_artist() -> None:
 def test_youtube_extractor_cookies_configuration() -> None:
     extractor = YouTubeExtractor(cookies_browser="brave")
     assert extractor.ydl_opts.get("cookiesfrombrowser") == ("brave",)
-    assert extractor.ydl_opts.get("extractor_args", {}).get("youtube", {}).get("player_client") == [
-        "visionos",
-        "mweb",
-        "android",
-    ]
 
 
 @patch("dj_downloader.youtube.YoutubeDL")

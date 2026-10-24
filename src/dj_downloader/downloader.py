@@ -85,11 +85,6 @@ class AudioDownloader:
             "quiet": True,
             "no_warnings": True,
             "default_search": "ytsearch5",
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["visionos", "mweb", "android"],
-                }
-            },
             **cookie_opts,
         }
 
@@ -145,11 +140,6 @@ class AudioDownloader:
             "outtmpl": str(target_dir / f"{file_stem}.%(ext)s"),
             "quiet": True,
             "no_warnings": True,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["visionos", "mweb", "android"],
-                }
-            },
             **cookie_opts,
             "postprocessors": [
                 {

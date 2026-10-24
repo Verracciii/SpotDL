@@ -67,11 +67,6 @@ class YouTubeExtractor:
             "skip_download": True,
             "quiet": True,
             "no_warnings": True,
-            "extractor_args": {
-                "youtube": {
-                    "player_client": ["visionos", "mweb", "android"],
-                }
-            },
             **cookie_opts,
         }
         if ydl_opts:
